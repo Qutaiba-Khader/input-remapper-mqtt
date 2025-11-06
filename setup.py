@@ -101,7 +101,7 @@ for po_file in glob.glob(PO_FILES):
 
 setup(
     name="input-remapper-mqtt",
-    version="2.2.0-mqtt",
+    version="2.2.0+mqtt",
     description="MQTT-based Home Assistant integration for input devices",
     author="Sezanzeb (MQTT fork by Qutaiba-Khader)",
     author_email="b8x45ygc9@mozmail.com",
