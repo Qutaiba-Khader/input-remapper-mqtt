@@ -36,6 +36,12 @@ from packaging import version
 
 from inputremapper.logging.logger import logger
 
+# Check if MQTT is available for accepting free-form action strings
+try:
+    from inputremapper.mqtt_client import MQTT_AVAILABLE
+except ImportError:
+    MQTT_AVAILABLE = False
+
 try:
     from pydantic.v1 import (
         BaseModel,
@@ -402,6 +408,13 @@ class Mapping(UIMapping):
             mapping_mock = namedtuple("Mapping", values.keys())(**values)
             # raises MacroError
             Parser.parse(symbol, mapping=mapping_mock, verbose=False)
+            return values
+
+        # If MQTT is available, accept any non-empty string as a valid MQTT action
+        # This allows free-form strings like "toggle_lights" to be used as MQTT payloads
+        if MQTT_AVAILABLE:
+            # Any string is valid for MQTT - it will be published as the "pressed_key"
+            # in the MQTT JSON payload. No need to validate against keyboard layout.
             return values
 
         code = keyboard_layout.get(symbol)
