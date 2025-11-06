@@ -59,6 +59,9 @@ from inputremapper.gui.utils import HandlerDisabled, Colors
 from inputremapper.injection.mapping_handlers.axis_transform import Transformation
 from inputremapper.input_event import InputEvent
 from inputremapper.utils import get_evdev_constant_name
+from inputremapper.mqtt_client import get_mqtt_config
+from inputremapper.logging.logger import logger
+import webbrowser
 
 Capabilities = Dict[int, List]
 
@@ -250,8 +253,21 @@ class MappingSelectionLabel(Gtk.ListBoxRow):
         self.name_input.connect("activate", self._on_gtk_rename_finished)
         self.name_input.connect("key-press-event", self._on_gtk_rename_abort)
 
+        # button to open HA automation page for this mapping
+        self.automation_btn = Gtk.Button()
+        self.automation_btn.set_relief(Gtk.ReliefStyle.NONE)
+        self.automation_btn.set_image(
+            Gtk.Image.new_from_icon_name("network-server", Gtk.IconSize.MENU)
+        )
+        self.automation_btn.set_tooltip_text(_("Open Home Assistant Automation"))
+        self.automation_btn.set_margin_top(4)
+        self.automation_btn.set_margin_bottom(4)
+        self.automation_btn.connect("clicked", self._on_automation_clicked)
+
         self._box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
         self._box.set_center_widget(self.label)
+        self._box.add(self.automation_btn)
+        self._box.set_child_packing(self.automation_btn, False, False, 4, Gtk.PackType.END)
         self._box.add(self.edit_btn)
         self._box.set_child_packing(self.edit_btn, False, False, 4, Gtk.PackType.END)
         self._box.add(self.name_input)
@@ -265,6 +281,7 @@ class MappingSelectionLabel(Gtk.ListBoxRow):
         )
 
         self.edit_btn.hide()
+        self.automation_btn.hide()
         self.name_input.hide()
 
     def __repr__(self):
@@ -272,12 +289,14 @@ class MappingSelectionLabel(Gtk.ListBoxRow):
 
     def _set_not_selected(self):
         self.edit_btn.hide()
+        self.automation_btn.hide()
         self.name_input.hide()
         self.label.show()
 
     def _set_selected(self):
         self.label.set_label(self.name)
         self.edit_btn.show()
+        self.automation_btn.show()
         self.name_input.hide()
         self.label.show()
 
@@ -319,6 +338,20 @@ class MappingSelectionLabel(Gtk.ListBoxRow):
     def _on_gtk_rename_abort(self, _, key_event: Gdk.EventKey):
         if key_event.keyval == Gdk.KEY_Escape:
             self._set_selected()
+
+    def _on_automation_clicked(self, _):
+        """Open Home Assistant automation page in browser."""
+        try:
+            config = get_mqtt_config()
+            if config and config.ha_url:
+                # Open the automations page with the config/automation path
+                automation_url = f"{config.ha_url.rstrip('/')}/config/automation"
+                webbrowser.open(automation_url)
+                logger.info(f"Opening Home Assistant automations at {automation_url}")
+            else:
+                logger.warning("Home Assistant URL not configured")
+        except Exception as e:
+            logger.error(f"Failed to open Home Assistant automations: {e}")
 
     def cleanup(self) -> None:
         """Clean up message listeners. Execute before removing from gui!"""
