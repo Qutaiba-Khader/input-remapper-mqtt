@@ -24,6 +24,7 @@
 
 
 if __name__ == "__main__":
-    from inputremapper.bin.input_remapper_control import main
+    from inputremapper.bin.input_remapper_control import InputRemapperControlBin
 
-    main()
+    options = InputRemapperControlBin.parse_args()
+    InputRemapperControlBin.main(options)
