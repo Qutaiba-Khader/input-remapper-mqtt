@@ -280,18 +280,30 @@ class Daemon:
 
     def publish(self):
         """Make the dbus interface available."""
-        bus = SystemBus()
         try:
+            bus = SystemBus()
             bus.publish(BUS_NAME, self)
+            logger.info(f"D-Bus service published successfully on {BUS_NAME}")
         except RuntimeError as error:
             logger.error("Is the service already running? (%s)", str(error))
             sys.exit(9)
+        except Exception as error:
+            logger.error(f"Failed to publish D-Bus service: {error}")
+            import traceback
+            logger.error(f"D-Bus publish traceback:\n{traceback.format_exc()}")
+            sys.exit(10)
 
     def run(self):
         """Start the daemons loop. Blocks until the daemon stops."""
-        loop = GLib.MainLoop()
-        logger.debug("Running daemon")
-        loop.run()
+        try:
+            loop = GLib.MainLoop()
+            logger.info("Daemon main loop started successfully")
+            loop.run()
+        except Exception as error:
+            logger.error(f"Error in daemon main loop: {error}")
+            import traceback
+            logger.error(f"Main loop traceback:\n{traceback.format_exc()}")
+            raise
 
     def refresh(self, group_key: Optional[str] = None):
         """Refresh groups if the specified group is unknown.

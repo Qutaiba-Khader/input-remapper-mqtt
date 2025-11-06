@@ -65,22 +65,47 @@ class InputRemapperServiceBin:
 
         # Initialize MQTT client for Home Assistant integration
         logger.info("Initializing MQTT client for Home Assistant...")
-        if initialize_mqtt_client():
-            logger.info("MQTT client initialized successfully")
-        else:
-            logger.warning(
-                "Failed to initialize MQTT client. "
-                "The service will continue but MQTT publishing will not work. "
-                "Please create ~/mqtt_config.json with your MQTT broker settings."
-            )
+        try:
+            if initialize_mqtt_client():
+                logger.info("MQTT client initialized successfully")
+            else:
+                logger.warning(
+                    "Failed to initialize MQTT client. "
+                    "The service will continue but MQTT publishing will not work. "
+                    "Please create ~/mqtt_config.json with your MQTT broker settings."
+                )
+        except Exception as e:
+            logger.error(f"Exception during MQTT client initialization: {e}")
+            logger.warning("Service will continue without MQTT functionality")
+            import traceback
+            logger.debug(f"MQTT init traceback:\n{traceback.format_exc()}")
 
-        global_config = GlobalConfig()
-        global_uinputs = GlobalUInputs(UInput)
-        mapping_parser = MappingParser(global_uinputs)
+        try:
+            logger.info("Creating daemon components...")
+            global_config = GlobalConfig()
+            global_uinputs = GlobalUInputs(UInput)
+            mapping_parser = MappingParser(global_uinputs)
 
-        daemon = Daemon(global_config, global_uinputs, mapping_parser)
-        daemon.publish()
-        daemon.run()
+            logger.info("Initializing daemon...")
+            daemon = Daemon(global_config, global_uinputs, mapping_parser)
 
-        # Cleanup
-        shutdown_mqtt_client()
+            logger.info("Publishing D-Bus service...")
+            daemon.publish()
+
+            logger.info("Starting daemon main loop...")
+            daemon.run()
+        except KeyboardInterrupt:
+            logger.info("Service interrupted by user")
+            sys.exit(0)
+        except Exception as e:
+            logger.error(f"Fatal error in service: {e}")
+            import traceback
+            logger.error(f"Traceback:\n{traceback.format_exc()}")
+            sys.exit(1)
+        finally:
+            # Cleanup
+            logger.info("Shutting down MQTT client...")
+            try:
+                shutdown_mqtt_client()
+            except Exception as e:
+                logger.error(f"Error during MQTT shutdown: {e}")
