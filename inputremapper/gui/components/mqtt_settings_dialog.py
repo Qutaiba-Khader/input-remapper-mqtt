@@ -310,6 +310,17 @@ class MQTTSettingsDialog:
             if cp_result.returncode != 0:
                 return False, f"Failed to copy config to system location: {cp_result.stderr}"
 
+            # Set permissions to 644 (readable by all, writable by root)
+            chmod_result = subprocess.run(
+                ["pkexec", "chmod", "644", target_path],
+                capture_output=True,
+                text=True
+            )
+
+            if chmod_result.returncode != 0:
+                logger.warning(f"Failed to set permissions on config file: {chmod_result.stderr}")
+                # Don't fail - file is saved, just might not be readable by GUI
+
             logger.info(f"MQTT config saved to {target_path} using elevated privileges")
             return True, f"Configuration saved to {target_path}"
 
@@ -368,8 +379,9 @@ class MQTTSettingsDialog:
         logger.info(f"MQTT configuration saved successfully to {system_config_path}")
 
         # Reinitialize MQTT client with new config
+        # Explicitly pass the system config path to ensure it's found
         try:
-            initialize_mqtt_client()
+            initialize_mqtt_client(config_path=system_config_path)
             logger.info("MQTT client reinitialized with new configuration")
             self._show_success(f"Configuration saved successfully!\nSaved to: {system_config_path}\nMQTT client reconnected.")
             return True
