@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import os
 import re
+import subprocess
 from typing import Optional
 
 from gi.repository import Gtk
@@ -263,6 +264,59 @@ class MQTTSettingsDialog:
 
         return True, None
 
+    def _save_config_with_pkexec(self, config: MQTTConfig, target_path: str) -> tuple[bool, str]:
+        """Save config to system location using pkexec for elevated privileges.
+
+        Args:
+            config: MQTTConfig to save
+            target_path: Path to save to (requires root permissions)
+
+        Returns:
+            Tuple of (success, message)
+        """
+        import tempfile
+        import json
+
+        # First, save to a temporary file in user's space
+        try:
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as tmp_file:
+                json.dump(config.to_dict(), tmp_file, indent=2)
+                tmp_path = tmp_file.name
+
+            logger.debug(f"Created temporary config file at {tmp_path}")
+
+            # Ensure target directory exists using pkexec
+            target_dir = os.path.dirname(target_path)
+            mkdir_result = subprocess.run(
+                ["pkexec", "mkdir", "-p", target_dir],
+                capture_output=True,
+                text=True
+            )
+
+            if mkdir_result.returncode != 0:
+                os.unlink(tmp_path)
+                return False, f"Failed to create config directory: {mkdir_result.stderr}"
+
+            # Copy temp file to target location using pkexec
+            cp_result = subprocess.run(
+                ["pkexec", "cp", tmp_path, target_path],
+                capture_output=True,
+                text=True
+            )
+
+            # Clean up temp file
+            os.unlink(tmp_path)
+
+            if cp_result.returncode != 0:
+                return False, f"Failed to copy config to system location: {cp_result.stderr}"
+
+            logger.info(f"MQTT config saved to {target_path} using elevated privileges")
+            return True, f"Configuration saved to {target_path}"
+
+        except Exception as e:
+            logger.error(f"Exception saving config with pkexec: {e}")
+            return False, f"Error: {str(e)}"
+
     def _save_config(self) -> bool:
         """Save the configuration.
 
@@ -299,21 +353,29 @@ class MQTTSettingsDialog:
             ha_url=ha_url,
         )
 
-        # Save to file
-        try:
-            config.save_to_file()
-            logger.info("MQTT configuration saved successfully")
+        # Save to system location that the service will find
+        # This is the first location the service searches
+        system_config_path = "/etc/input-remapper-mqtt/mqtt_config.json"
 
-            # Reinitialize MQTT client with new config
+        # Try to save to system location using pkexec
+        success, message = self._save_config_with_pkexec(config, system_config_path)
+
+        if not success:
+            logger.error(f"Failed to save to system location: {message}")
+            self._show_error(f"Failed to save configuration: {message}")
+            return False
+
+        logger.info(f"MQTT configuration saved successfully to {system_config_path}")
+
+        # Reinitialize MQTT client with new config
+        try:
             initialize_mqtt_client()
             logger.info("MQTT client reinitialized with new configuration")
-
-            self._show_success("Configuration saved successfully! MQTT client reconnected.")
+            self._show_success(f"Configuration saved successfully!\nSaved to: {system_config_path}\nMQTT client reconnected.")
             return True
-
         except Exception as e:
-            logger.error(f"Failed to save configuration: {e}")
-            self._show_error(f"Failed to save configuration: {str(e)}")
+            logger.error(f"Failed to reinitialize MQTT client: {e}")
+            self._show_error(f"Config saved but failed to reconnect: {str(e)}")
             return False
 
     def _test_mqtt(self):
