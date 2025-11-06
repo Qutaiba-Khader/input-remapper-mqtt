@@ -413,6 +413,17 @@ class Injector(multiprocessing.Process):
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
 
+        # Initialize MQTT client in this forked process
+        # The MQTT client from the parent process doesn't work after fork
+        try:
+            from inputremapper.mqtt_client import initialize_mqtt_client
+            if initialize_mqtt_client():
+                logger.info("[INJECTOR_001] MQTT client initialized in injector process")
+            else:
+                logger.warning("[INJECTOR_002] MQTT client not available in injector process")
+        except Exception as e:
+            logger.warning(f"[INJECTOR_003] Could not initialize MQTT in injector: {e}")
+
         self._devices = self.group.get_devices()
 
         # InputConfigs may not contain the origin_hash information, this will try to
