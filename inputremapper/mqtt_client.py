@@ -165,8 +165,6 @@ class MQTTClient:
         self._client: Optional[mqtt.Client] = None
         self._connected = False
         self._lock = threading.Lock()
-        self._connect_thread: Optional[threading.Thread] = None
-        self._should_stop = False
 
         logger.info(
             f"Initializing MQTT client: broker={config.broker}, "
@@ -214,7 +212,15 @@ class MQTTClient:
         try:
             with self._lock:
                 # Create new client instance
-                self._client = mqtt.Client()
+                # Handle both old and new paho-mqtt API versions
+                try:
+                    # Try new API (paho-mqtt >= 2.0.0)
+                    from paho.mqtt.client import CallbackAPIVersion
+                    self._client = mqtt.Client(CallbackAPIVersion.VERSION1)
+                except (ImportError, AttributeError):
+                    # Fall back to old API (paho-mqtt < 2.0.0)
+                    self._client = mqtt.Client()
+
                 self._client.username_pw_set(self.config.username, self.config.password)
                 self._client.on_connect = self._on_connect
                 self._client.on_disconnect = self._on_disconnect
@@ -250,7 +256,6 @@ class MQTTClient:
 
     def disconnect(self) -> None:
         """Disconnect from MQTT broker."""
-        self._should_stop = True
         if self._client:
             with self._lock:
                 self._client.loop_stop()
