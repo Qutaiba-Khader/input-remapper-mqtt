@@ -100,7 +100,10 @@ class MQTTHandler(MappingHandler):
         # Get MQTT client
         mqtt_client = get_mqtt_client()
         if not mqtt_client:
-            logger.error("MQTT client not initialized, cannot publish event")
+            logger.error(
+                f"[MQTT_HANDLER_001] MQTT client not initialized, cannot publish event. "
+                f"Please check MQTT config. Device: '{self._device_name}', Action: '{self._mqtt_action}'"
+            )
             return False
 
         # Publish the event
@@ -113,20 +116,20 @@ class MQTTHandler(MappingHandler):
 
             if success:
                 self._active = True
-                logger.debug(
-                    f"MQTT event published successfully: "
+                logger.info(
+                    f"[MQTT_HANDLER_002] MQTT event published: "
                     f"device='{self._device_name}', action='{self._mqtt_action}'"
                 )
             else:
                 logger.error(
-                    f"Failed to publish MQTT event: "
+                    f"[MQTT_HANDLER_003] Failed to publish MQTT event: "
                     f"device='{self._device_name}', action='{self._mqtt_action}'"
                 )
 
             return success
 
         except Exception as e:
-            logger.error(f"Exception in MQTT handler: {e}")
+            logger.error(f"[MQTT_HANDLER_004] Exception in MQTT handler: {e}")
             import traceback
             logger.debug(f"MQTT handler exception traceback:\n{traceback.format_exc()}")
             return False

@@ -68,37 +68,74 @@ class MQTTConfig:
         """Load MQTT configuration from file.
 
         Args:
-            config_path: Path to config file. If None, uses ~/mqtt_config.json
+            config_path: Path to config file. If None, searches standard locations:
+                        1. /etc/input-remapper-mqtt/mqtt_config.json
+                        2. ~/.config/input-remapper-mqtt/mqtt_config.json
+                        3. ~/mqtt_config.json
 
         Returns:
             MQTTConfig instance
 
         Raises:
-            FileNotFoundError: If config file doesn't exist
+            FileNotFoundError: If config file doesn't exist in any standard location
             ValueError: If config file is invalid
         """
+        from inputremapper.logging.logger import logger
+
         if config_path is None:
-            config_path = os.path.expanduser("~/mqtt_config.json")
+            # Search standard locations in order of preference
+            search_paths = [
+                "/etc/input-remapper-mqtt/mqtt_config.json",
+                os.path.expanduser("~/.config/input-remapper-mqtt/mqtt_config.json"),
+                os.path.expanduser("~/mqtt_config.json"),
+            ]
+
+            for path in search_paths:
+                if os.path.exists(path):
+                    config_path = path
+                    logger.info(f"[MQTT_CONFIG_001] Found MQTT config at: {config_path}")
+                    break
+            else:
+                # No config file found
+                raise FileNotFoundError(
+                    f"[MQTT_CONFIG_002] MQTT config file not found. Searched locations:\n" +
+                    "\n".join(f"  - {p}" for p in search_paths) +
+                    "\n\nPlease create a config file at one of these locations with required fields:\n" +
+                    "  broker, port, username, password\n" +
+                    "Optional fields: topic, qos, retain, default_device_name, ha_url"
+                )
+        else:
+            logger.info(f"[MQTT_CONFIG_003] Using specified MQTT config path: {config_path}")
 
         if not os.path.exists(config_path):
             raise FileNotFoundError(
-                f"MQTT config file not found at {config_path}. "
-                f"Please create a config file with broker, port, username, and password."
+                f"[MQTT_CONFIG_004] MQTT config file not found at specified path: {config_path}"
             )
 
         try:
             with open(config_path, "r") as f:
                 config_data = json.load(f)
         except json.JSONDecodeError as e:
-            raise ValueError(f"Invalid JSON in MQTT config file: {e}")
+            raise ValueError(
+                f"[MQTT_CONFIG_005] Invalid JSON in MQTT config file {config_path}: {e}"
+            )
 
         # Validate required fields
         required_fields = ["broker", "port", "username", "password"]
         missing_fields = [f for f in required_fields if f not in config_data]
         if missing_fields:
             raise ValueError(
-                f"Missing required fields in MQTT config: {', '.join(missing_fields)}"
+                f"[MQTT_CONFIG_006] Missing required fields in MQTT config {config_path}: " +
+                f"{', '.join(missing_fields)}\n" +
+                "Required fields: broker, port, username, password"
             )
+
+        # Generate default ha_url from broker if not provided
+        ha_url = config_data.get("ha_url")
+        if not ha_url:
+            # Default: http://<broker>:8123
+            ha_url = f"http://{config_data['broker']}:8123"
+            logger.debug(f"[MQTT_CONFIG_007] No ha_url specified, using default: {ha_url}")
 
         return cls(
             broker=config_data["broker"],
@@ -107,9 +144,9 @@ class MQTTConfig:
             password=config_data["password"],
             topic=config_data.get("topic", "key_remap/events"),
             qos=int(config_data.get("qos", 1)),
-            retain=bool(config_data.get("retain", False)),
+            retain=config_data.get("retain", False),  # Explicitly default to False
             default_device_name=config_data.get("default_device_name"),
-            ha_url=config_data.get("ha_url"),
+            ha_url=ha_url,
         )
 
     def to_dict(self) -> Dict[str, Any]:
@@ -177,7 +214,7 @@ class MQTTClient:
         """Callback when client connects to broker."""
         if rc == 0:
             self._connected = True
-            logger.info(f"Connected to MQTT broker at {self.config.broker}:{self.config.port}")
+            logger.info(f"[MQTT_CLIENT_001] Connected to MQTT broker at {self.config.broker}:{self.config.port}")
         else:
             self._connected = False
             error_messages = {
@@ -188,7 +225,7 @@ class MQTTClient:
                 5: "Connection refused - not authorized",
             }
             error_msg = error_messages.get(rc, f"Unknown error code: {rc}")
-            logger.error(f"Failed to connect to MQTT broker: {error_msg}")
+            logger.error(f"[MQTT_CLIENT_002] Failed to connect to MQTT broker: {error_msg}")
 
     def _on_disconnect(self, client, userdata, rc):
         """Callback when client disconnects from broker."""
@@ -229,7 +266,7 @@ class MQTTClient:
                 # Enable automatic reconnection
                 self._client.reconnect_delay_set(min_delay=1, max_delay=120)
 
-                logger.info(f"Connecting to MQTT broker at {self.config.broker}:{self.config.port}...")
+                logger.info(f"[MQTT_CLIENT_003] Connecting to MQTT broker at {self.config.broker}:{self.config.port}...")
                 self._client.connect(self.config.broker, self.config.port, keepalive=60)
 
                 # Start network loop in background
@@ -242,14 +279,14 @@ class MQTTClient:
                     time.sleep(0.1)
 
                 if self._connected:
-                    logger.info("MQTT client connected successfully")
+                    logger.info("[MQTT_CLIENT_004] MQTT client connected successfully")
                     return True
                 else:
-                    logger.error("MQTT connection timeout")
+                    logger.error("[MQTT_CLIENT_005] MQTT connection timeout after 5 seconds")
                     return False
 
         except Exception as e:
-            logger.error(f"Failed to connect to MQTT broker: {e}")
+            logger.error(f"[MQTT_CLIENT_006] Failed to connect to MQTT broker: {e}")
             import traceback
             logger.debug(f"Connection error traceback:\n{traceback.format_exc()}")
             return False
@@ -289,13 +326,13 @@ class MQTTClient:
         """
         # Ensure we're connected
         if not self._connected and ensure_connected:
-            logger.info("Not connected to MQTT broker, attempting to connect...")
+            logger.info("[MQTT_PUBLISH_001] Not connected to MQTT broker, attempting to connect...")
             if not self.connect():
-                logger.error("Failed to connect to MQTT broker, cannot publish event")
+                logger.error("[MQTT_PUBLISH_002] Failed to connect to MQTT broker, cannot publish event")
                 return False
 
         if not self._connected:
-            logger.error("Cannot publish event: not connected to MQTT broker")
+            logger.error("[MQTT_PUBLISH_003] Cannot publish event: not connected to MQTT broker")
             return False
 
         # Build payload
@@ -316,16 +353,16 @@ class MQTTClient:
             # Check if publish was queued successfully
             if result.rc == mqtt.MQTT_ERR_SUCCESS:
                 logger.info(
-                    f"Published MQTT event - device_name: '{device_name}', "
+                    f"[MQTT_PUBLISH_004] Published MQTT event - device_name: '{device_name}', "
                     f"pressed_key: '{pressed_key}', topic: '{self.config.topic}'"
                 )
                 return True
             else:
-                logger.error(f"Failed to publish MQTT event: error code {result.rc}")
+                logger.error(f"[MQTT_PUBLISH_005] Failed to publish MQTT event: error code {result.rc}")
                 return False
 
         except Exception as e:
-            logger.error(f"Exception while publishing MQTT event: {e}")
+            logger.error(f"[MQTT_PUBLISH_006] Exception while publishing MQTT event: {e}")
             import traceback
             logger.debug(f"Publish error traceback:\n{traceback.format_exc()}")
             return False
@@ -378,7 +415,7 @@ def initialize_mqtt_client(config_path: Optional[str] = None) -> bool:
     """Initialize the global MQTT client.
 
     Args:
-        config_path: Path to MQTT config file. If None, uses ~/mqtt_config.json
+        config_path: Path to MQTT config file. If None, searches standard locations.
 
     Returns:
         True if initialization successful, False otherwise
@@ -394,24 +431,20 @@ def initialize_mqtt_client(config_path: Optional[str] = None) -> bool:
 
         # Connect
         if _mqtt_client.connect():
-            logger.info("MQTT client initialized and connected successfully")
+            logger.info("[MQTT_INIT_001] MQTT client initialized and connected successfully")
             return True
         else:
-            logger.warning("MQTT client initialized but connection failed. Will retry on first publish.")
+            logger.warning("[MQTT_INIT_002] MQTT client initialized but connection failed. Will retry on first publish.")
             return True  # Still consider initialization successful
 
     except FileNotFoundError as e:
         logger.error(str(e))
-        logger.error(
-            "Please create ~/mqtt_config.json with your MQTT broker settings. "
-            "See README for details."
-        )
         return False
     except ValueError as e:
-        logger.error(f"Invalid MQTT configuration: {e}")
+        logger.error(str(e))
         return False
     except Exception as e:
-        logger.error(f"Failed to initialize MQTT client: {e}")
+        logger.error(f"[MQTT_INIT_003] Unexpected error during MQTT client initialization: {e}")
         import traceback
         logger.debug(f"Initialization error traceback:\n{traceback.format_exc()}")
         return False
