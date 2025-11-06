@@ -103,7 +103,8 @@ nano ~/mqtt_config.json
   "topic": "key_remap/events",
   "qos": 1,
   "retain": false,
-  "default_device_name": "living_room_remote"
+  "default_device_name": "living_room_remote",
+  "ha_url": "http://192.168.1.160:8123"
 }
 ```
 
@@ -127,10 +128,14 @@ You can edit the configuration in **two ways**:
 
 **Option 1: GUI Settings Dialog** (Recommended)
 1. Launch `input-remapper-mqtt-gtk`
-2. Go to **Settings → MQTT & HA Settings**
-3. Edit all fields in the form
+2. Click the **gear icon** (⚙️) in the header bar
+3. Edit all fields in the Settings dialog:
+   - MQTT broker, port, username, password
+   - Topic, QoS, retain settings
+   - Default device name
+   - Home Assistant URL
 4. Click **"Test MQTT"** to verify connection
-5. Click **"Save"** to apply changes
+5. Click **"Save"** to apply changes (saves to `~/mqtt_config.json` and reconnects MQTT client)
 
 **Option 2: Manual File Editing**
 ```bash
@@ -210,54 +215,69 @@ automation:
 
 ## 🔧 Installation
 
+### Installation Overview
+
+This MQTT version is designed to **coexist** with the original input-remapper. You can have both installed on the same system without conflicts.
+
+**What's different:**
+- Binaries: `input-remapper-mqtt-gtk`, `input-remapper-mqtt-service` (vs `input-remapper-gtk`, `input-remapper-service`)
+- Systemd service: `input-remapper-mqtt.service` (vs `input-remapper.service`)
+- D-Bus name: `inputremapper.mqtt.Control` (vs `inputremapper.Control`)
+- Config directory: **Shared** - Both use `~/.config/input-remapper-2/`
+
+**Installation scenarios:**
+
+1. **Fresh install (no original input-remapper)**: Follow the Quick Install steps below
+2. **Alongside original input-remapper**: Both can run simultaneously - use original for key remapping, MQTT version for Home Assistant
+3. **Replacing original**: Disable the original service first: `sudo systemctl disable --now input-remapper`
+
 ### Quick Install (Debian/Ubuntu/Raspberry Pi OS)
 
-```bash
-# Install dependencies
-sudo apt update && sudo apt install -y \
-    python3-evdev python3-gi python3-paho-mqtt \
-    python3-pydbus python3-psutil python3-pydantic \
-    python3-setuptools gettext
+**Step 1: Install Dependencies**
 
-# Clone and install
+⚠️ **CRITICAL**: Use `apt` to install `python3-paho-mqtt`, **NOT pip**. System-level MQTT library is required for proper permissions.
+
+```bash
+sudo apt update && sudo apt install -y \
+    python3-evdev \
+    python3-gi \
+    python3-paho-mqtt \
+    python3-pydbus \
+    python3-psutil \
+    python3-pydantic \
+    python3-setuptools \
+    gettext
+```
+
+**Step 2: Clone and Install**
+
+```bash
 git clone https://github.com/Qutaiba-Khader/input-remapper-mqtt.git
 cd input-remapper-mqtt
 sudo python3 setup.py install
+```
 
-# Enable service
+**Step 3: Enable Service**
+
+```bash
 sudo systemctl daemon-reload
 sudo systemctl enable --now input-remapper-mqtt
 ```
 
-📖 **[Detailed Installation Instructions →](INSTALL.md)**
-
-### Coexistence with Original Input-Remapper
-
-**Good news**: This MQTT version can run **alongside** the original input-remapper!
-
-- ✅ Different binaries: `input-remapper-mqtt-gtk` vs `input-remapper-gtk`
-- ✅ Different services: `input-remapper-mqtt.service` vs `input-remapper.service`
-- ✅ Different D-Bus names: No conflicts
-- ⚠️ Shared config directory: Both use `~/.config/input-remapper-2/`
-
-You can have both installed and use them for different purposes:
-- **Original** for key remapping
-- **MQTT version** for Home Assistant integration
-
-📖 **[Coexistence Guide →](INSTALL.md#coexistence-with-original-input-remapper)**
-
-<br/>
+**Step 4: Configure MQTT**
 
 ```bash
-# Subscribe to all events
-mosquitto_sub -h 192.168.1.160 -p 1883 -u mqttuser -P mqttuser -t 'key_remap/events' -v
+cp mqtt_config.json.example ~/mqtt_config.json
+nano ~/mqtt_config.json  # Edit with your broker details
 ```
 
-Press buttons on your mapped device and you should see messages like:
+**Step 5: Launch GUI**
 
+```bash
+input-remapper-mqtt-gtk
 ```
-key_remap/events {"device_name": "my_keyboard", "pressed_key": "toggle_lights"}
-```
+
+📖 **[Detailed Installation Guide with Troubleshooting →](INSTALL.md)**
 
 <br/>
 
@@ -265,11 +285,21 @@ key_remap/events {"device_name": "my_keyboard", "pressed_key": "toggle_lights"}
 
 ### UI Changes
 
-In the mapping editor:
+The MQTT version includes several UI enhancements:
+
+**Header Bar Buttons:**
+- **⚙️ Settings** (gear icon): Open MQTT & Home Assistant configuration dialog
+- **🌐 Open HA** (network icon): Open Home Assistant in your browser (uses `ha_url` from config)
+
+**Mapping Editor:**
 - The "Output Key" field now accepts any string (your MQTT action)
 - Instead of selecting a key from a dropdown, type your action string
 - Examples: `toggle_lights`, `play_pause`, `scene_movie_night`
 - The string you enter will be sent as the `pressed_key` in the MQTT payload
+
+**Per-Mapping Automation Buttons:**
+- When a mapping is selected, a **🌐 network icon** appears next to the edit button
+- Click it to quickly open the Home Assistant automation page for creating automations for that mapping
 
 ### MQTT Action String Guidelines
 
@@ -285,6 +315,107 @@ The `device_name` in MQTT payloads comes from:
 2. Or the `default_device_name` from your MQTT config
 
 This allows you to have multiple devices publishing to the same topic and distinguish them in Home Assistant automations.
+
+<br/>
+
+## 🐛 Debugging and Logs
+
+### Log File Location
+
+Input Remapper MQTT automatically logs to a **rotating log file** at:
+
+```
+~/.local/share/input-remapper-mqtt/logs/app.log
+```
+
+**Log rotation settings:**
+- Maximum file size: 10 MB
+- Backup files: 5 (app.log.1, app.log.2, etc.)
+- Oldest logs are automatically deleted when limit is reached
+
+### Viewing Logs
+
+**View the main log file:**
+```bash
+tail -f ~/.local/share/input-remapper-mqtt/logs/app.log
+```
+
+**View systemd service logs:**
+```bash
+# Follow service logs in real-time
+sudo journalctl -u input-remapper-mqtt -f
+
+# View last 100 lines
+sudo journalctl -u input-remapper-mqtt -n 100
+
+# View logs since last boot
+sudo journalctl -u input-remapper-mqtt -b
+```
+
+### What Gets Logged
+
+The log file captures:
+- ✅ MQTT connection/disconnection events
+- ✅ Device names and pressed keys (MQTT payloads)
+- ✅ Configuration loading/saving
+- ✅ Errors and warnings
+- ✅ Button press events and mapping activations
+
+### Enabling Debug Logging
+
+For more verbose output, edit the logger configuration in your installation:
+
+```bash
+# Edit logger configuration
+sudo nano /usr/lib/python3/dist-packages/inputremapper/logging/logger.py
+```
+
+Look for the logging level and change it to `DEBUG`:
+```python
+logger.setLevel(logging.DEBUG)
+```
+
+Then restart the service:
+```bash
+sudo systemctl restart input-remapper-mqtt
+```
+
+### Testing MQTT Messages
+
+**Method 1: MQTT Explorer** (GUI)
+- Download [MQTT Explorer](http://mqtt-explorer.com/)
+- Connect to your broker
+- Watch for messages on `key_remap/events` topic
+
+**Method 2: mosquitto_sub** (CLI)
+```bash
+# Subscribe to all events
+mosquitto_sub -h 192.168.1.160 -p 1883 \
+  -u mqttuser -P mqttpassword \
+  -t 'key_remap/events' -v
+```
+
+Press buttons on your mapped device and you should see:
+```
+key_remap/events {"device_name": "my_keyboard", "pressed_key": "toggle_lights"}
+```
+
+### Common Issues
+
+**Issue: MQTT not connecting**
+- Check logs: `tail -f ~/.local/share/input-remapper-mqtt/logs/app.log`
+- Verify broker is reachable: `ping 192.168.1.160`
+- Test credentials: `mosquitto_pub -h 192.168.1.160 -u mqttuser -P mqttpassword -t test -m "test"`
+
+**Issue: No messages published**
+- Verify device is mapped: Check GUI for active mappings
+- Check service status: `sudo systemctl status input-remapper-mqtt`
+- Look for errors in logs
+
+**Issue: Home Assistant not receiving**
+- Verify topic in HA automation matches config
+- Check MQTT integration in HA: Settings → Devices & Services → MQTT
+- Use MQTT Explorer to verify messages are actually being published
 
 <br/>
 

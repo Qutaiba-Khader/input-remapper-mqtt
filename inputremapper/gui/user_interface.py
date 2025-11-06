@@ -63,6 +63,9 @@ from inputremapper.gui.utils import (
 )
 from inputremapper.injection.injector import InjectorStateMessage
 from inputremapper.logging.logger import logger, COMMIT_HASH, VERSION, EVDEV_VERSION
+from inputremapper.gui.components.mqtt_settings_dialog import MQTTSettingsDialog
+from inputremapper.mqtt_client import get_mqtt_config
+import webbrowser
 
 # https://cjenkins.wordpress.com/2012/05/08/use-gtksourceview-widget-in-glade/
 GObject.type_register(GtkSource.View)
@@ -108,6 +111,7 @@ class UserInterface:
 
         self._create_dialogs()
         self._create_components()
+        self._add_mqtt_buttons()
         self._connect_gtk_signals()
         self._connect_message_listener()
 
@@ -415,3 +419,53 @@ class UserInterface:
     def on_gtk_preset_name_input_return(self, _, event: Gdk.EventKey):
         if event.keyval == Gdk.KEY_Return:
             self.on_gtk_rename_clicked()
+
+    def _add_mqtt_buttons(self):
+        """Add MQTT settings and Home Assistant buttons to the UI."""
+        # Get the header bar to add buttons
+        header_bar = self.window.get_titlebar()
+
+        # Create Settings button
+        settings_button = Gtk.Button()
+        settings_icon = Gtk.Image.new_from_icon_name("preferences-system", Gtk.IconSize.BUTTON)
+        settings_button.set_image(settings_icon)
+        settings_button.set_tooltip_text("MQTT & Home Assistant Settings")
+        settings_button.connect("clicked", self._on_mqtt_settings_clicked)
+        header_bar.pack_end(settings_button)
+        settings_button.show()
+
+        # Create Open Home Assistant button
+        ha_button = Gtk.Button()
+        ha_icon = Gtk.Image.new_from_icon_name("network-server", Gtk.IconSize.BUTTON)
+        ha_button.set_image(ha_icon)
+        ha_button.set_tooltip_text("Open Home Assistant")
+        ha_button.connect("clicked", self._on_open_ha_clicked)
+        header_bar.pack_end(ha_button)
+        ha_button.show()
+
+        # Initialize the settings dialog
+        self.mqtt_settings_dialog = MQTTSettingsDialog(self.window)
+
+    def _on_mqtt_settings_clicked(self, _):
+        """Open the MQTT settings dialog."""
+        self.mqtt_settings_dialog.show()
+
+    def _on_open_ha_clicked(self, _):
+        """Open Home Assistant in the default web browser."""
+        try:
+            config = get_mqtt_config()
+            if config and config.ha_url:
+                webbrowser.open(config.ha_url)
+                logger.info(f"Opening Home Assistant at {config.ha_url}")
+            else:
+                logger.warning("Home Assistant URL not configured")
+                self.message_broker.publish(
+                    MessageType.status_msg,
+                    "Please configure Home Assistant URL in Settings"
+                )
+        except Exception as e:
+            logger.error(f"Failed to open Home Assistant: {e}")
+            self.message_broker.publish(
+                MessageType.status_msg,
+                f"Failed to open Home Assistant: {e}"
+            )
