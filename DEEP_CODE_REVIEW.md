@@ -160,7 +160,7 @@ This fork is designed to run **alongside** the original input-remapper without c
 | Component | MQTT Version | Original Version | Evidence |
 |-----------|--------------|------------------|----------|
 | **Package Name** | `input-remapper-mqtt` | `input-remapper` | setup.py line 103 |
-| **Version** | `2.2.0-mqtt` | `2.2.0` | setup.py line 104 |
+| **Version** | `2.2.0+mqtt` | `2.2.0` | setup.py line 104 |
 | **Binaries** | `input-remapper-mqtt-gtk`<br>`input-remapper-mqtt-service`<br>`input-remapper-mqtt-control`<br>`input-remapper-mqtt-reader-service` | `input-remapper-gtk`<br>`input-remapper-service`<br>`input-remapper-control`<br>`input-remapper-reader-service` | setup.py lines 123-126 |
 | **systemd Service** | `input-remapper-mqtt.service` | `input-remapper.service` | setup.py line 119,<br>data/input-remapper-mqtt.service |
 | **D-Bus Name** | `inputremapper.mqtt.Control` | `inputremapper.Control` | setup.py line 120,<br>daemon.py line 55,<br>service file line 10 |
