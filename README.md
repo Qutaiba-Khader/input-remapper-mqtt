@@ -44,6 +44,27 @@ nano ~/mqtt_config.json  # Edit with your broker details
 
 # 5. Launch GUI
 input-remapper-mqtt-gtk
+
+# --------------------------------------------
+
+# Install dependencies
+sudo apt update
+sudo apt install -y git python3-pip python3-paho-mqtt python3-evdev python3-gi python3-setuptools gettext pkexec
+
+# Clone from main and install
+cd ~
+git clone https://github.com/Qutaiba-Khader/input-remapper-mqtt.git
+cd input-remapper-mqtt
+sudo pip3 install -e . --break-system-packages
+
+# Enable and start service
+sudo systemctl daemon-reload
+sudo systemctl enable input-remapper-mqtt.service
+sudo systemctl start input-remapper-mqtt.service
+
+# Check status
+sudo systemctl status input-remapper-mqtt.service
+
 ```
 
 📖 **[Full Installation Guide →](INSTALL.md)**
